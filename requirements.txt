@@ -1,3 +1,9 @@
 fastapi
 uvicorn
 pydantic
+jupyter
+torch
+torchvision
+pandas
+Pillow
+matplotlib

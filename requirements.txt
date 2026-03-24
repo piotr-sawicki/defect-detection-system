@@ -1,5 +1,7 @@
 fastapi
 uvicorn
+aiofiles
+python-multipart
 pydantic
 jupyter
 torch

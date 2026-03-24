@@ -83,16 +83,25 @@
     button:disabled { background: #aaa; cursor: default; }
     button:hover:not(:disabled) { background: #1d4ed8; }
 
-    /* Result */
-    #result {
-      display: none;
-      margin-top: 1rem;
-      padding: 1rem;
+    /* Result area */
+    #result-section { display: none; }
+
+    #result-summary {
+      padding: 0.9rem 1.2rem;
       border-radius: 6px;
       font-size: 1rem;
+      margin-bottom: 1rem;
     }
-    #result.defect { background: #fee2e2; color: #991b1b; }
-    #result.ok { background: #dcfce7; color: #166534; }
+    #result-summary.defect { background: #fee2e2; color: #991b1b; }
+    #result-summary.ok     { background: #dcfce7; color: #166534; }
+    #result-summary.error  { background: #fef9c3; color: #854d0e; }
+
+    #result-canvas {
+      display: block;
+      max-width: 100%;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+    }
 
     /* Preview */
     #preview {
@@ -124,10 +133,25 @@
 
   <div class="section">
     <button id="predict-btn" disabled onclick="runPredict()">Run prediction</button>
-    <div id="result"></div>
+  </div>
+
+  <div class="section" id="result-section">
+    <h2>Result</h2>
+    <div id="result-summary"></div>
+    <canvas id="result-canvas"></canvas>
   </div>
 
   <script>
+    const LABEL_COLORS = {
+      crazing:         "#ef4444",
+      inclusion:       "#f97316",
+      patches:         "#eab308",
+      pitted_surface:  "#22c55e",
+      "rolled-in_scale": "#3b82f6",
+      scratches:       "#a855f7",
+    };
+    const DEFAULT_COLOR = "#ec4899";
+
     let selectedFile = null;
     let selectedExample = null;
 
@@ -155,7 +179,7 @@
       selectedFile = null;
       document.getElementById("preview").style.display = "none";
       document.getElementById("predict-btn").disabled = false;
-      clearResult();
+      hideResult();
     }
 
     function onFileSelect(event) {
@@ -169,45 +193,100 @@
       preview.src = URL.createObjectURL(file);
       preview.style.display = "block";
       document.getElementById("predict-btn").disabled = false;
-      clearResult();
+      hideResult();
     }
 
     async function runPredict() {
-      clearResult();
+      hideResult();
       document.getElementById("predict-btn").disabled = true;
 
       let response;
-      if (selectedExample) {
-        response = await fetch(`/predict/example/${selectedExample}`, { method: "POST" });
-      } else if (selectedFile) {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        response = await fetch("/predict/upload", { method: "POST", body: formData });
+      try {
+        if (selectedExample) {
+          response = await fetch(`/predict/example/${selectedExample}`, { method: "POST" });
+        } else if (selectedFile) {
+          const formData = new FormData();
+          formData.append("file", selectedFile);
+          response = await fetch("/predict/upload", { method: "POST", body: formData });
+        }
+      } catch (e) {
+        showError("Network error: " + e.message);
+        document.getElementById("predict-btn").disabled = false;
+        return;
       }
 
       document.getElementById("predict-btn").disabled = false;
 
       if (!response.ok) {
-        showResult("Error: " + response.statusText, "defect");
+        showError("Error: " + response.statusText);
         return;
       }
 
       const data = await response.json();
-      const label = data.defect_detected ? "Defect detected" : "No defect detected";
-      const confidence = (data.confidence * 100).toFixed(1);
-      showResult(`${label} — confidence: ${confidence}%`, data.defect_detected ? "defect" : "ok");
+
+      // Load the image to draw on canvas
+      let imgSrc;
+      if (selectedExample) {
+        imgSrc = `/examples-images/${selectedExample}`;
+      } else {
+        imgSrc = URL.createObjectURL(selectedFile);
+      }
+
+      const img = new Image();
+      img.onload = () => drawResult(img, data);
+      img.src = imgSrc;
     }
 
-    function showResult(text, type) {
-      const el = document.getElementById("result");
-      el.textContent = text;
-      el.className = type;
-      el.style.display = "block";
+    function drawResult(img, data) {
+      const canvas = document.getElementById("result-canvas");
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+
+      ctx.drawImage(img, 0, 0);
+
+      for (const box of data.boxes) {
+        const color = LABEL_COLORS[box.label] || DEFAULT_COLOR;
+        const x = box.x1, y = box.y1, w = box.x2 - box.x1, h = box.y2 - box.y1;
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+
+        const text = `${box.label} ${(box.score * 100).toFixed(1)}%`;
+        ctx.font = "bold 11px sans-serif";
+        const textW = ctx.measureText(text).width;
+
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y - 16, textW + 8, 16);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(text, x + 4, y - 4);
+      }
+
+      // Summary
+      const summary = document.getElementById("result-summary");
+      if (data.count === 0) {
+        summary.textContent = "No defects detected.";
+        summary.className = "ok";
+      } else {
+        summary.textContent =
+          `Found ${data.count} defect${data.count > 1 ? "s" : ""} — avg. score: ${(data.avg_score * 100).toFixed(1)}%`;
+        summary.className = "defect";
+      }
+
+      document.getElementById("result-section").style.display = "block";
     }
 
-    function clearResult() {
-      const el = document.getElementById("result");
-      el.style.display = "none";
+    function showError(msg) {
+      const summary = document.getElementById("result-summary");
+      summary.textContent = msg;
+      summary.className = "error";
+      document.getElementById("result-canvas").width = 0;
+      document.getElementById("result-section").style.display = "block";
+    }
+
+    function hideResult() {
+      document.getElementById("result-section").style.display = "none";
     }
   </script>
 

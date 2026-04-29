@@ -176,6 +176,7 @@
 
     let selectedFile = null;
     let selectedExample = null;
+    let thresholdValue = null;
 
     // Load examples
     fetch("/examples")
@@ -220,14 +221,16 @@
     async function runPredict() {
       hideResult();
       document.getElementById("predict-btn").disabled = true;
+      thresholdValue = document.getElementById("threshold").value
 
       let response;
       try {
         if (selectedExample) {
-          response = await fetch(`/predict/example/${selectedExample}`, { method: "POST" });
+          response = await fetch(`/predict/example/${selectedExample}?threshold=${thresholdValue}`, { method: "POST" });
         } else if (selectedFile) {
           const formData = new FormData();
           formData.append("file", selectedFile);
+          formData.append("threshold", thresholdValue);
           response = await fetch("/predict/upload", { method: "POST", body: formData });
         }
       } catch (e) {

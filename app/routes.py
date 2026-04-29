@@ -15,7 +15,7 @@ def list_examples():
 
 
 @router.post("/predict/example/{filename}", response_model=PredictResponse)
-def predict_example(filename: str):
+def predict_example(filename: str, threshold: float=0.5):
     file_path = EXAMPLES_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -24,7 +24,7 @@ def predict_example(filename: str):
 
 
 @router.post("/predict/upload", response_model=PredictResponse)
-async def predict_upload(file: UploadFile = File(...)):
+async def predict_upload(file: UploadFile = File(...), threshold: float=0.5):
     contents = await file.read()
     result = predictor.predict_bytes(contents)
     return PredictResponse(image_id=file.filename, **result)

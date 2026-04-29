@@ -17,6 +17,12 @@
     h1 { margin-bottom: 2rem; font-size: 1.8rem; }
     h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #555; }
 
+    .container {
+      display: grid;
+      grid-template-columns: 20% auto;
+      gap: 10px;
+    }
+
     .section {
       background: white;
       border-radius: 8px;
@@ -119,19 +125,33 @@
   <h1>Defect Detection</h1>
 
   <div class="section">
-    <h2>Upload image</h2>
-    <div class="upload-area" onclick="document.getElementById('file-input').click()">
-      <input type="file" id="file-input" accept="image/*" onchange="onFileSelect(event)">
-      <div>Click to select an image from your computer</div>
-      <p>JPG, PNG supported</p>
-    </div>
-    <img id="preview">
+    <h2>Model</h2>
+    <label for="model">Select model:</label>
+    <select name="Model" id="model">
+      <option value="Faster R-CNN">Faster R-CNN</option>
+    </select>
+    <br></br>
+    <label for="threshold">Set threshold:</label>
+    <input type="number" id="threshold" name="threshold" min="0.0" max="1.0" step="0.001" value="0.5">
   </div>
 
-  <div class="section">
-    <h2>Or choose from examples</h2>
-    <div class="examples-grid" id="examples-grid"></div>
+  <div class="container">
+    <div class="section">
+      <h2>Upload image</h2>
+      <div class="upload-area" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept="image/*" onchange="onFileSelect(event)">
+        <div>Click to select an image from your computer</div>
+        <p>JPG, PNG supported</p>
+      </div>
+      <img id="preview">
+    </div>
+
+    <div class="section">
+      <h2>or choose from examples</h2>
+      <div class="examples-grid" id="examples-grid"></div>
+    </div>
   </div>
+
 
   <div class="section">
     <button id="predict-btn" disabled onclick="runPredict()">Run prediction</button>

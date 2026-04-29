@@ -41,7 +41,7 @@
     /* Examples grid */
     .examples-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
       gap: 0.75rem;
     }
 
@@ -53,7 +53,9 @@
       transition: border-color 0.2s;
     }
     .example-card:hover { border-color: #888; }
-    .example-card.selected { border-color: #2563eb; }
+    .example-card.selected {
+      border-color: #2563eb;
+      transform: scale(180%);}
 
     .example-card img {
       width: 100%;
@@ -98,7 +100,7 @@
 
     #result-canvas {
       display: block;
-      max-width: 100%;
+      max-width: 200%;
       border-radius: 6px;
       border: 1px solid #e5e7eb;
     }
@@ -165,7 +167,6 @@
           card.className = "example-card";
           card.innerHTML = `
             <img src="/examples-images/${filename}" alt="${filename}">
-            <span>${filename}</span>
           `;
           card.onclick = () => selectExample(filename, card);
           grid.appendChild(card);
@@ -239,15 +240,18 @@
 
     function drawResult(img, data) {
       const canvas = document.getElementById("result-canvas");
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
+
+      const scaleX = 2, scaleY = 2;
+
+      canvas.width  = scaleX * img.naturalWidth;
+      canvas.height = scaleY * img.naturalHeight;
       const ctx = canvas.getContext("2d");
 
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, scaleX * img.naturalWidth, scaleY * img.naturalHeight);
 
       for (const box of data.boxes) {
         const color = LABEL_COLORS[box.label] || DEFAULT_COLOR;
-        const x = box.x1, y = box.y1, w = box.x2 - box.x1, h = box.y2 - box.y1;
+        const x = scaleX * box.x1, y = scaleY * box.y1, w = scaleX * (box.x2 - box.x1), h = scaleY * (box.y2 - box.y1);
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;

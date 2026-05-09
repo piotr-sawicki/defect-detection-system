@@ -1,7 +1,7 @@
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from app.schemas import PredictResponse
-from app.predictor import predictor
+from app.predictors import get_predictor
 
 router = APIRouter()
 
@@ -15,16 +15,18 @@ def list_examples():
 
 
 @router.post("/predict/example/{filename}", response_model=PredictResponse)
-def predict_example(filename: str, threshold: float=0.5):
+def predict_example(filename: str, threshold: float = 0.5, model: str = "faster_rcnn"):
     file_path = EXAMPLES_DIR / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    result = predictor.predict(str(file_path))
+    predictor = get_predictor(model)
+    result = predictor.predict(str(file_path), threshold)
     return PredictResponse(image_id=filename, **result)
 
 
 @router.post("/predict/upload", response_model=PredictResponse)
-async def predict_upload(file: UploadFile = File(...), threshold: float=0.5):
+async def predict_upload(file: UploadFile = File(...), threshold: float = 0.5, model: str = "faster_rcnn"):
+    predictor = get_predictor(model)
     contents = await file.read()
-    result = predictor.predict_bytes(contents)
+    result = predictor.predict_bytes(contents, threshold)
     return PredictResponse(image_id=file.filename, **result)

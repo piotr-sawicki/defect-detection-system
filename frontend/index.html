@@ -128,7 +128,8 @@
     <h2>Model</h2>
     <label for="model">Select model:</label>
     <select name="Model" id="model">
-      <option value="Faster R-CNN">Faster R-CNN</option>
+      <option value="faster_rcnn">Faster R-CNN</option>
+      <option value="yolo">YOLO v8 pre-trained</option>
     </select>
     <br></br>
     <label for="threshold">Set threshold:</label>
@@ -221,16 +222,18 @@
     async function runPredict() {
       hideResult();
       document.getElementById("predict-btn").disabled = true;
-      thresholdValue = document.getElementById("threshold").value
+      thresholdValue = document.getElementById("threshold").value;
+      const modelValue = document.getElementById("model").value;
 
       let response;
       try {
         if (selectedExample) {
-          response = await fetch(`/predict/example/${selectedExample}?threshold=${thresholdValue}`, { method: "POST" });
+          response = await fetch(`/predict/example/${selectedExample}?threshold=${thresholdValue}&model=${modelValue}`, { method: "POST" });
         } else if (selectedFile) {
           const formData = new FormData();
           formData.append("file", selectedFile);
           formData.append("threshold", thresholdValue);
+          formData.append("model", modelValue);
           response = await fetch("/predict/upload", { method: "POST", body: formData });
         }
       } catch (e) {

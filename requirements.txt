@@ -9,3 +9,5 @@ torchvision
 pandas
 Pillow
 matplotlib
+ultralytics
+torchmetrics

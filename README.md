@@ -11,6 +11,18 @@ Compares two object detection architectures — **Faster R-CNN** and **YOLOv8** 
 
 ---
 
+## Defect Classes
+
+| crazing | inclusion | patches |
+|---|---|---|
+| ![crazing](examples/images/crazing_1.jpg) | ![inclusion](examples/images/inclusion_1.jpg) | ![patches](examples/images/patches_1.jpg) |
+
+| pitted_surface | rolled-in_scale | scratches |
+|---|---|---|
+| ![pitted_surface](examples/images/pitted_surface_1.jpg) | ![rolled-in_scale](examples/images/rolled-in_scale_1.jpg) | ![scratches](examples/images/scratches_1.jpg) |
+
+---
+
 ## Results
 
 Evaluated on 360 validation images (NEU-DET dataset, 6 defect classes).

@@ -1,21 +1,33 @@
 import io
+from pathlib import Path
 
 from PIL import Image
 from ultralytics import YOLO
 
 from app.predictors.base import BasePredictor, boxes_to_response
 
+WEIGHTS_PATH = Path("data/yolov8s_ft.pt")
 
-class YOLOPredictor(BasePredictor):
+_EMPTY_RESULT = {"defect_detected": False, "confidence": 0.0, "boxes": [], "count": 0, "avg_score": 0.0}
+
+
+class YOLOSFineTunedPredictor(BasePredictor):
     def __init__(self):
-        # yolov8n = nano variant — fastest, smallest; pre-trained on COCO (80 classes)
-        self._model = YOLO("yolov8n_ft.pt")
+        if not WEIGHTS_PATH.exists():
+            print(f"WARNING: fine-tuned weights not found at {WEIGHTS_PATH}")
+            self._model = None
+        else:
+            self._model = YOLO(str(WEIGHTS_PATH))
 
     def predict(self, image_path: str, threshold: float) -> dict:
+        if self._model is None:
+            return _EMPTY_RESULT
         results = self._model(image_path, conf=threshold, verbose=False)[0]
         return self._parse_results(results)
 
     def predict_bytes(self, image_bytes: bytes, threshold: float) -> dict:
+        if self._model is None:
+            return _EMPTY_RESULT
         img = Image.open(io.BytesIO(image_bytes))
         results = self._model(img, conf=threshold, verbose=False)[0]
         return self._parse_results(results)

@@ -16,7 +16,7 @@ DATASET_YAML = "/kaggle/input/datasets/sawickipiotr/neu-dataset-for-yolov8/yolo_
 # Starting point: yolov8n pre-trained on COCO.
 # Fine-tuning reuses learned low-level features (edges, textures)
 # and teaches the head to recognize steel defects specifically.
-BASE_MODEL = "yolov8n.pt"
+BASE_MODEL = "yolov8n_ft.pt"
 
 EPOCHS    = 100
 IMG_SIZE  = 200   # matches our dataset (200x200 images)

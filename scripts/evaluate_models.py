@@ -1,17 +1,20 @@
 """
-Compare Faster R-CNN vs YOLOv8 fine-tuned on the validation set.
+Evaluate detection models on the validation set and save results to CSV.
 
-Both models are evaluated with the same pipeline using torchmetrics,
-so the comparison is fair (same IoU thresholds, same ground truth).
-
-Requirements:
-    pip install torchmetrics
+YOLOv8n results are loaded from cache (already evaluated) by default.
+Use --rerun-yolo-n to force re-evaluation.
 
 Usage:
     python scripts/evaluate_models.py
+    python scripts/evaluate_models.py --rcnn
+    python scripts/evaluate_models.py --rerun-yolo-n
+    python scripts/evaluate_models.py --out results/eval_results.csv
 """
 
+import argparse
+import csv
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -29,19 +32,30 @@ VAL_IMAGES_DIR = PROJECT_ROOT / "data/yolo_dataset/images/val"
 VAL_LABELS_DIR = PROJECT_ROOT / "data/yolo_dataset/labels/val"
 
 FASTER_RCNN_WEIGHTS = PROJECT_ROOT / "data/FastRCNNweights.pth"
-YOLO_WEIGHTS        = PROJECT_ROOT / "data/yolov8n.pt"
+YOLO_N_WEIGHTS      = PROJECT_ROOT / "data/yolov8n_ft.pt"
+YOLO_S_WEIGHTS      = PROJECT_ROOT / "data/yolov8s_ft.pt"
 
-# Shared class list (0-indexed, no background)
 CLASSES = [
     "crazing", "inclusion", "patches",
     "pitted_surface", "rolled-in_scale", "scratches",
 ]
 
+# Previously evaluated results — used instead of re-running inference
+YOLO_N_CACHED = {
+    "mAP50":    0.7261,
+    "mAP50-95": 0.4167,
+    "mAP50-95_crazing":        0.1519,
+    "mAP50-95_inclusion":      0.4353,
+    "mAP50-95_patches":        0.5974,
+    "mAP50-95_pitted_surface": 0.5421,
+    "mAP50-95_rolled-in_scale": 0.2290,
+    "mAP50-95_scratches":      0.5446,
+}
+
 
 # ── Ground truth ──────────────────────────────────────────────────────────────
 
 def load_ground_truth(label_path: Path, img_w: int, img_h: int) -> dict:
-    """Read a YOLO-format .txt label and convert back to absolute xyxy boxes."""
     boxes, labels = [], []
     for line in label_path.read_text().strip().splitlines():
         if not line:
@@ -59,10 +73,9 @@ def load_ground_truth(label_path: Path, img_w: int, img_h: int) -> dict:
     }
 
 
-# ── Faster R-CNN ──────────────────────────────────────────────────────────────
+# ── Model builders ────────────────────────────────────────────────────────────
 
 def build_faster_rcnn() -> torch.nn.Module:
-    # +1 because Faster R-CNN reserves label 0 for background
     num_classes = len(CLASSES) + 1
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=None)
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -76,17 +89,13 @@ def predict_faster_rcnn(model: torch.nn.Module, img: Image.Image, threshold: flo
     img_tensor = TF.to_tensor(img.convert("RGB"))
     with torch.no_grad():
         output = model([img_tensor])[0]
-
     keep = output["scores"] >= threshold
-    # Shift labels: Faster R-CNN label 1 → class index 0 (remove background offset)
     return {
         "boxes":  output["boxes"][keep],
         "scores": output["scores"][keep],
         "labels": output["labels"][keep] - 1,
     }
 
-
-# ── YOLOv8 fine-tuned ─────────────────────────────────────────────────────────
 
 def predict_yolo(model: YOLO, img: Image.Image, threshold: float) -> dict:
     results = model(img, conf=threshold, verbose=False)[0]
@@ -105,17 +114,11 @@ def predict_yolo(model: YOLO, img: Image.Image, threshold: float) -> dict:
 
 # ── Evaluation loop ───────────────────────────────────────────────────────────
 
-# Low threshold so torchmetrics receives all predictions and can sweep
-# the full precision-recall curve internally. This is required for correct mAP.
 EVAL_THRESHOLD = 0.001
 
 
 def evaluate(name: str, predict_fn) -> dict:
-    metric = MeanAveragePrecision(
-        iou_type="bbox",
-        class_metrics=True,
-    )
-
+    metric = MeanAveragePrecision(iou_type="bbox", class_metrics=True)
     image_paths = sorted(VAL_IMAGES_DIR.glob("*.jpg"))
     total = len(image_paths)
     print(f"\nEvaluating {name} on {total} images...")
@@ -125,81 +128,123 @@ def evaluate(name: str, predict_fn) -> dict:
             print(f"  {i}/{total} ({100 * i // total}%)", flush=True)
         img = Image.open(img_path)
         label_path = VAL_LABELS_DIR / img_path.with_suffix(".txt").name
-
         if not label_path.exists():
             continue
-
         gt   = load_ground_truth(label_path, img.width, img.height)
         pred = predict_fn(img)
-
         metric.update([pred], [gt])
 
-    return metric.compute()
+    raw = metric.compute()
+    row = {
+        "mAP50":    round(raw["map_50"].item(), 4),
+        "mAP50-95": round(raw["map"].item(), 4),
+    }
+    for cls_name, ap in zip(CLASSES, raw.get("map_per_class", [])):
+        row[f"mAP50-95_{cls_name}"] = round(ap.item(), 4)
+    return row
 
 
-# ── Results table ─────────────────────────────────────────────────────────────
+# ── Printing ──────────────────────────────────────────────────────────────────
 
-def print_results(name: str, results: dict) -> None:
+def print_results(name: str, row: dict) -> None:
     print(f"\n{'═' * 52}")
     print(f"  {name}")
     print(f"{'═' * 52}")
-    print(f"  {'Metric':<20} {'Value':>8}")
-    print(f"  {'-' * 30}")
-    print(f"  {'mAP50':<20} {results['map_50'].item():>8.4f}")
-    print(f"  {'mAP50-95':<20} {results['map'].item():>8.4f}")
-
-    if "map_per_class" in results and results["map_per_class"].numel() == len(CLASSES):
-        print(f"\n  {'Class':<22} {'mAP50':>8}")
+    print(f"  {'mAP50':<20} {row['mAP50']:>8.4f}")
+    print(f"  {'mAP50-95':<20} {row['mAP50-95']:>8.4f}")
+    per = {k: v for k, v in row.items() if k.startswith("mAP50-95_")}
+    if per:
+        print(f"\n  {'Class':<22} {'mAP50-95':>8}")
         print(f"  {'-' * 32}")
-        for cls_name, ap in zip(CLASSES, results["map_per_class"]):
-            print(f"  {cls_name:<22} {ap.item():>8.4f}")
+        for k, v in per.items():
+            print(f"  {k.removeprefix('mAP50-95_'):<22} {v:>8.4f}")
 
 
-def print_comparison(rcnn_results: dict, yolo_results: dict) -> None:
-    print(f"\n{'═' * 60}")
+def print_comparison(all_results: dict[str, dict]) -> None:
+    names = list(all_results.keys())
+    col = 12
+    width = 22 + col * len(names) + 4
+    print(f"\n{'═' * width}")
     print(f"  COMPARISON")
-    print(f"{'═' * 60}")
-    print(f"  {'Class':<22} {'Faster R-CNN':>12} {'YOLOv8-ft':>12}")
-    print(f"  {'-' * 48}")
+    print(f"{'═' * width}")
+    print(f"  {'Class':<22}" + "".join(f"{n[:col]:>{col}}" for n in names))
+    print(f"  {'-' * (width - 2)}")
+    print(f"  {'mAP50 (overall)':<22}" +
+          "".join(f"{r['mAP50']:>{col}.4f}" for r in all_results.values()))
+    print(f"  {'mAP50-95 (overall)':<22}" +
+          "".join(f"{r['mAP50-95']:>{col}.4f}" for r in all_results.values()))
 
-    rcnn_map50 = rcnn_results["map_50"].item()
-    yolo_map50 = yolo_results["map_50"].item()
-    print(f"  {'mAP50 (overall)':<22} {rcnn_map50:>12.4f} {yolo_map50:>12.4f}")
+    per_keys = [k for k in next(iter(all_results.values())) if k.startswith("mAP50-95_")]
+    if per_keys:
+        print(f"  {'-' * (width - 2)}")
+        for k in per_keys:
+            cls_name = k.removeprefix("mAP50-95_")
+            print(f"  {cls_name:<22}" +
+                  "".join(f"{r.get(k, float('nan')):>{col}.4f}" for r in all_results.values()))
 
-    rcnn_per = rcnn_results.get("map_per_class", [])
-    yolo_per = yolo_results.get("map_per_class", [])
-    if len(rcnn_per) == len(CLASSES) and len(yolo_per) == len(CLASSES):
-        print(f"  {'-' * 48}")
-        for cls_name, r_ap, y_ap in zip(CLASSES, rcnn_per, yolo_per):
-            winner = "<" if r_ap < y_ap else ">"
-            print(f"  {cls_name:<22} {r_ap.item():>12.4f} {y_ap.item():>12.4f}  {winner}")
+
+# ── CSV ───────────────────────────────────────────────────────────────────────
+
+def save_csv(all_results: dict[str, dict], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rows = [{"timestamp": ts, "model": name, **row} for name, row in all_results.items()]
+    fieldnames = list(rows[0].keys())
+    write_header = not path.exists()
+    with open(path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerows(rows)
+    print(f"\nResults appended to {path}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    print("Loading YOLOv8 fine-tuned...")
-    yolo_model = YOLO(str(YOLO_WEIGHTS))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rcnn",         action="store_true", help="evaluate Faster R-CNN (~10 min)")
+    parser.add_argument("--rerun-yolo-n", action="store_true", help="re-evaluate YOLOv8n instead of using cached values")
+    parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "results/eval_results.csv",
+                        help="output CSV path (default: results/eval_results.csv)")
+    args = parser.parse_args()
 
-    print("Loading Faster R-CNN...")
-    rcnn_model = build_faster_rcnn()
+    all_results = {}
 
-    yolo_results = evaluate(
-        "YOLOv8 fine-tuned",
-        lambda img: predict_yolo(yolo_model, img, EVAL_THRESHOLD),
+    # YOLOv8n — cached by default
+    if args.rerun_yolo_n:
+        print("Loading YOLOv8n fine-tuned...")
+        yolo_n = YOLO(str(YOLO_N_WEIGHTS))
+        all_results["YOLOv8n fine-tuned"] = evaluate(
+            "YOLOv8n fine-tuned",
+            lambda img: predict_yolo(yolo_n, img, EVAL_THRESHOLD),
+        )
+    else:
+        print("YOLOv8n fine-tuned: using cached results (pass --rerun-yolo-n to re-evaluate)")
+        all_results["YOLOv8n fine-tuned"] = YOLO_N_CACHED
+
+    # YOLOv8s
+    print("\nLoading YOLOv8s fine-tuned...")
+    yolo_s = YOLO(str(YOLO_S_WEIGHTS))
+    all_results["YOLOv8s fine-tuned"] = evaluate(
+        "YOLOv8s fine-tuned",
+        lambda img: predict_yolo(yolo_s, img, EVAL_THRESHOLD),
     )
 
-    rcnn_results = evaluate(
-        "Faster R-CNN",
-        lambda img: predict_faster_rcnn(rcnn_model, img, EVAL_THRESHOLD),
-    )
+    # Faster R-CNN (optional, slow)
+    if args.rcnn:
+        print("\nLoading Faster R-CNN...")
+        rcnn = build_faster_rcnn()
+        all_results["Faster R-CNN"] = evaluate(
+            "Faster R-CNN",
+            lambda img: predict_faster_rcnn(rcnn, img, EVAL_THRESHOLD),
+        )
 
+    for name, row in all_results.items():
+        print_results(name, row)
 
-
-    print_results("YOLOv8 fine-tuned", yolo_results)
-    print_results("Faster R-CNN", rcnn_results)
-
-    print_comparison(rcnn_results, yolo_results)
+    print_comparison(all_results)
+    save_csv(all_results, args.out)
 
 
 if __name__ == "__main__":

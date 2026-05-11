@@ -1,0 +1,4 @@
+timestamp,model,mean_ms,std_ms,min_ms,max_ms,n
+2026-05-11 19:05:19,YOLOv8s fine-tuned,40.3,3.9,34.2,54.6,30
+2026-05-11 19:05:19,Faster R-CNN,1531.4,139.4,1394.2,1942.3,30
+2026-05-11 19:05:19,YOLOv8n fine-tuned,26.8,2.9,22.8,36.9,30

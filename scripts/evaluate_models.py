@@ -29,7 +29,7 @@ VAL_IMAGES_DIR = PROJECT_ROOT / "data/yolo_dataset/images/val"
 VAL_LABELS_DIR = PROJECT_ROOT / "data/yolo_dataset/labels/val"
 
 FASTER_RCNN_WEIGHTS = PROJECT_ROOT / "data/FastRCNNweights.pth"
-YOLO_WEIGHTS        = PROJECT_ROOT / "data/yolo_steel_best.pt"
+YOLO_WEIGHTS        = PROJECT_ROOT / "data/yolov8n.pt"
 
 # Shared class list (0-indexed, no background)
 CLASSES = [

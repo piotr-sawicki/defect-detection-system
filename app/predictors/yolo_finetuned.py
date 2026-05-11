@@ -6,7 +6,7 @@ from ultralytics import YOLO
 
 from app.predictors.base import BasePredictor, boxes_to_response
 
-WEIGHTS_PATH = Path("data/yolo_steel_best.pt")
+WEIGHTS_PATH = Path("data/yolov8n.pt")
 
 _EMPTY_RESULT = {"defect_detected": False, "confidence": 0.0, "boxes": [], "count": 0, "avg_score": 0.0}
 

@@ -69,7 +69,7 @@ def main():
     ax.set_title("Speed vs Accuracy")
     ax.set_ylim(0.5, 1.0)
     ax.grid(True, linestyle="--", alpha=0.7)
-    ax.legend()
+    ax.legend(loc="upper left")
     fig.tight_layout()
 
     args.out.mkdir(parents=True, exist_ok=True)
